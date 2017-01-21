@@ -1,0 +1,54 @@
+apply plugin: 'com.android.application'
+
+def versionMajor = 1
+def versionMinor = 0
+def versionPatch = 1
+
+android {
+    compileSdkVersion 25
+    buildToolsVersion "25.0.2"
+    defaultConfig {
+        applicationId "com.yxkang.android.wechathongbao"
+        minSdkVersion 16
+        targetSdkVersion 25
+        versionCode versionMajor * 10000 + versionMinor * 100 + versionPatch
+        versionName "${versionMajor}.${versionMinor}.${versionPatch}"
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+    }
+    signingConfigs {
+        release {
+            keyAlias 'fine'
+            keyPassword 'yexiaokang'
+            storeFile file('keystore.jks')
+            storePassword 'yexiaokang'
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            signingConfig signingConfigs.release
+        }
+    }
+    applicationVariants.all { variant ->
+        variant.outputs.each { output ->
+            if (variant.buildType.name.equals('release')) {
+                def releaseName = "WeChatHB_V".concat(defaultConfig.versionName).concat(".apk")
+                output.outputFile = new File(output.outputFile.parent, releaseName)
+            } else if (variant.buildType.name.equals('debug')) {
+                println(variant.buildType.name)
+            }
+        }
+    }
+}
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+    androidTestCompile('com.android.support.test.espresso:espresso-core:2.2.2', {
+        exclude group: 'com.android.support', module: 'support-annotations'
+    })
+    compile 'com.android.support:appcompat-v7:25.1.0'
+    testCompile 'junit:junit:4.12'
+}
