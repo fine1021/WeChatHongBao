@@ -7,7 +7,6 @@ import android.graphics.Rect;
 import android.os.Parcelable;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
-import android.support.v4.os.BuildCompat;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
@@ -25,10 +24,9 @@ public class LuckyMoneyService extends AccessibilityService {
     private static final String DETAIL_UI = "com.tencent.mm.plugin.luckymoney.ui.LuckyMoneyDetailUI";
 
     private static final String[] HONGBAO_KEYWORD = new String[]{"领取红包", "查看红包"};
-    private static final String[] OVER_KEYWORD = new String[]{"手慢了", "已超过24小时"};
+    private static final String[] OVER_KEYWORD = new String[]{"手慢了", "已超过24小时", "红包已领取"};
 
     private boolean luckyMoneyAutoOpened;
-    private boolean isAtLeastN;
     private LuckyMoneyUID luckyMoneyUID = new LuckyMoneyUID();
     private String currentActivityName = LAUNCHER_UI;
     private boolean traverseMutex = false;
@@ -36,7 +34,6 @@ public class LuckyMoneyService extends AccessibilityService {
     @Override
     public void onCreate() {
         super.onCreate();
-        isAtLeastN = BuildCompat.isAtLeastN();
         Log.i(TAG, "onCreate: initialize ok");
     }
 
@@ -108,24 +105,20 @@ public class LuckyMoneyService extends AccessibilityService {
             }
             traverseMutex = false;
         } else if (RECEIVE_UI.equals(className)) {
-            if (!isAtLeastN) {
-                AccessibilityNodeInfo button = findOpenButton(rootNode);
-                if (button != null) {
-                    Log.i(TAG, "handleWindowStateChanged: button performClick");
-                    button.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                } else {
-                    if (luckyMoneyAutoOpened) {   // 如果是自动打开的情况就自动关闭，否则就不用关闭了
-                        if (hasOneOfOverNodes(rootNode)) {
-                            Log.i(TAG, "handleWindowStateChanged: LuckyMoneyReceiveUI performGlobalActionBack");
-                            performGlobalAction(GLOBAL_ACTION_BACK);
-                            setLuckyMoneyAutoOpened(false);
-                        } else {
-                            Log.w(TAG, "handleWindowStateChanged: can't close LuckyMoneyReceiveUI automatically");
-                        }
+            AccessibilityNodeInfo button = findOpenButton(rootNode);
+            if (button != null) {
+                Log.i(TAG, "handleWindowStateChanged: button performClick");
+                button.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            } else {
+                // 未找到开红包的按钮，可能是红包已经抢完了，也有可能是红包过期了
+                if (luckyMoneyAutoOpened) {   // 如果是自动打开的情况就自动关闭，否则就不用关闭了
+                    // 如果找到了一个带有“手慢了”、“已超过24小时”或者“红包已领取”的节点，说明红包已经没了
+                    if (hasOneOfOverNodes(rootNode)) {
+                        Log.i(TAG, "handleWindowStateChanged: LuckyMoneyReceiveUI performGlobalActionBack");
+                        performGlobalAction(GLOBAL_ACTION_BACK);
+                        setLuckyMoneyAutoOpened(false);
                     }
                 }
-            } else {
-                Log.w(TAG, "handleWindowStateChanged: not support Android N+ open");
             }
         } else if (DETAIL_UI.equals(className)) {
             if (luckyMoneyAutoOpened) {         // 如果是自动打开的情况就自动关闭，否则就不用关闭了
@@ -156,7 +149,7 @@ public class LuckyMoneyService extends AccessibilityService {
                         parent.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                         setLuckyMoneyAutoOpened(true);
                     } else {
-                        Log.v(TAG, "handleWindowContentChanged: assume hongbao has been opened");
+                        Log.w(TAG, "handleWindowContentChanged: assume hongbao has been opened");
                     }
                     parent.recycle();
                 }
@@ -183,13 +176,13 @@ public class LuckyMoneyService extends AccessibilityService {
 
     private boolean getLuckyMoneyUID(@NonNull AccessibilityNodeInfo node) {
         try {
+            Log.i(TAG, "getLuckyMoneyUID: enter");
             AccessibilityNodeInfo parentNode = node.getParent();
-            Log.i(TAG, "getLuckyMoneyUID: start");
             traverseNode(parentNode);
             boolean hasPickedTextView = false;
             boolean hasPickedImageView = false;
             int childCount = parentNode.getChildCount();
-            Log.d(TAG, "getLuckyMoneyUID: childCount = " + childCount);
+            Log.i(TAG, "getLuckyMoneyUID: childCount = " + childCount);
             /*
              * 当点对点发红包或者自己在群聊里发红包时，会有2个child，一个ImageView(头像布局)和一个LinearLayout(红包布局)
              * 当群聊发红包时，会有3个或者4个child，一个ImageView(头像布局)、一个LinearLayout(红包布局)、一个TextView(昵称)、一个TextView(时间)
@@ -222,13 +215,13 @@ public class LuckyMoneyService extends AccessibilityService {
         } catch (Exception e) {
             return false;
         } finally {
-            Log.d(TAG, "getLuckyMoneyUID: " + luckyMoneyUID.toString());
+            Log.i(TAG, "getLuckyMoneyUID: " + luckyMoneyUID.toString());
         }
     }
 
     private AccessibilityNodeInfo findHongbaoParentNode(@NonNull AccessibilityNodeInfo node) {
         try {
-            Log.i(TAG, "findHongbaoParentNode: start");
+            Log.i(TAG, "findHongbaoParentNode: enter");
             traverseNode(node);
             AccessibilityNodeInfo parentNode = node.getParent();
             if (parentNode == null) {
@@ -255,7 +248,7 @@ public class LuckyMoneyService extends AccessibilityService {
                 }
                 parentNode = parentNode.getParent();
             }
-            return parentNode == null ? null : parentNode;
+            return parentNode;
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -271,18 +264,18 @@ public class LuckyMoneyService extends AccessibilityService {
         int childCount = node.getChildCount();
         CharSequence className = node.getClassName();
         Log.i(TAG, "traversalNode: className = " + className);
-        Log.d(TAG, "traversalNode: childCount = " + childCount);
+        Log.i(TAG, "traversalNode: childCount = " + childCount);
         for (int i = 0; i < childCount; i++) {
             AccessibilityNodeInfo childNode = node.getChild(i);
             if (childNode == null) {
                 continue;
             }
             CharSequence childClassName = childNode.getClassName();
-            Log.v(TAG, "traversalNode: child className = " + childClassName);
+            Log.i(TAG, "traversalNode: child " + i + " className = " + childClassName);
             if ("android.widget.TextView".equals(childClassName)) {
-                Log.d(TAG, "traversalNode: child text = " + childNode.getText());
+                Log.w(TAG, "traversalNode: child " + i + " text = " + childNode.getText());
             }
-            Log.d(TAG, "traversalNode: child contentDescription = " + childNode.getContentDescription());
+            Log.i(TAG, "traversalNode: child " + i + " contentDescription = " + childNode.getContentDescription());
         }
     }
 
@@ -351,10 +344,7 @@ public class LuckyMoneyService extends AccessibilityService {
         return null;
     }
 
-    public void setLuckyMoneyAutoOpened(boolean luckyMoneyAutoOpened) {
-        if (isAtLeastN) {       // Android 7.0及以上暂时不支持
-            return;
-        }
+    private void setLuckyMoneyAutoOpened(boolean luckyMoneyAutoOpened) {
         this.luckyMoneyAutoOpened = luckyMoneyAutoOpened;
     }
 

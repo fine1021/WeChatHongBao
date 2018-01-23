@@ -2,10 +2,18 @@
 
 buildscript {
     repositories {
+        // For Gradle 4.1 or higher, just use google() instead
+        // If you're using a version of Gradle lower than 4.1, you must instead use:
+        maven {
+            url 'https://maven.google.com'
+        }
+        // An alternative URL is 'https://dl.google.com/dl/android/maven2/'
+
+        // google()
         jcenter()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:2.2.3'
+        classpath 'com.android.tools.build:gradle:3.0.1'
 
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files
@@ -14,6 +22,14 @@ buildscript {
 
 allprojects {
     repositories {
+        // For Gradle 4.1 or higher, just use google() instead
+        // If you're using a version of Gradle lower than 4.1, you must instead use:
+        maven {
+            url 'https://maven.google.com'
+        }
+        // An alternative URL is 'https://dl.google.com/dl/android/maven2/'
+
+        // google()
         jcenter()
     }
 }
