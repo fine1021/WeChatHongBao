@@ -3,11 +3,12 @@ package com.yxkang.android.wechathongbao;
 import android.accessibilityservice.AccessibilityService;
 import android.app.Notification;
 import android.app.PendingIntent;
+import android.content.SharedPreferences;
 import android.graphics.Rect;
 import android.os.Parcelable;
+import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
-import android.text.TextUtils;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -19,22 +20,48 @@ public class LuckyMoneyService extends AccessibilityService {
     private static final String TAG = "LuckyMoneyService";
 
     private static final String NOTIFICATION_KEYWORD = "[微信红包]";
+    /**
+     * 聊天界面
+     */
     private static final String LAUNCHER_UI = "com.tencent.mm.ui.LauncherUI";
+    /**
+     * 点击红包弹出的界面
+     */
     private static final String RECEIVE_UI = "com.tencent.mm.plugin.luckymoney.ui.LuckyMoneyReceiveUI";
+    /**
+     * 红包详情界面
+     */
     private static final String DETAIL_UI = "com.tencent.mm.plugin.luckymoney.ui.LuckyMoneyDetailUI";
 
+    /**
+     * 查看红包：自己发出去的红包，群聊可以自己领取，点对点自己无法领取
+     * 领取红包：别人发的红包，群聊或者点对点的方式，自己都可以领取
+     */
     private static final String[] HONGBAO_KEYWORD = new String[]{"领取红包", "查看红包"};
-    private static final String[] OVER_KEYWORD = new String[]{"手慢了", "已超过24小时", "红包已领取"};
+    private static final String[] HONGBAO_KEYWORD2 = new String[]{"领取红包"};
+    private static final String[] OVER_KEYWORD = new String[]{"手慢了", "已超过24小时"};
+
+    /**
+     * {@link SharedPreferences}的key值，检查自己发出去的红包
+     */
+    static final String PREF_CHECK_SELF = "pref_check_self";
 
     private boolean luckyMoneyAutoOpened;
-    private LuckyMoneyUID luckyMoneyUID = new LuckyMoneyUID();
     private String currentActivityName = LAUNCHER_UI;
     private boolean traverseMutex = false;
+    private SharedPreferences mPreferences;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        Log.i(TAG, "onCreate: initialize ok");
+        Log.i(TAG, "onCreate: Ok");
+    }
+
+    @Override
+    protected void onServiceConnected() {
+        super.onServiceConnected();
+        Log.i(TAG, "onServiceConnected: Ok");
+        mPreferences = PreferenceManager.getDefaultSharedPreferences(this);
     }
 
     @Override
@@ -62,7 +89,6 @@ public class LuckyMoneyService extends AccessibilityService {
                     if (parcelable != null && parcelable instanceof Notification) {
                         PendingIntent pendingIntent = ((Notification) parcelable).contentIntent;
                         try {
-                            luckyMoneyUID.clear();
                             pendingIntent.send();
                             Log.i(TAG, "openNotification: send ok");
                         } catch (PendingIntent.CanceledException e) {
@@ -88,17 +114,14 @@ public class LuckyMoneyService extends AccessibilityService {
                 return;
             }
             traverseMutex = true;
-            AccessibilityNodeInfo hongbaoNode = findHongbaoNode(rootNode);
+            AccessibilityNodeInfo hongbaoNode = findKeywordNode(rootNode);
             if (hongbaoNode != null) {
-                AccessibilityNodeInfo parent = findHongbaoParentNode(hongbaoNode);
+                AccessibilityNodeInfo parent = findClickableParentNode(hongbaoNode);
                 if (parent != null) {
-                    if (getLuckyMoneyUID(parent)) {
-                        Log.i(TAG, "handleWindowStateChanged: parent performClick");
-                        parent.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                        setLuckyMoneyAutoOpened(true);
-                    } else {
-                        Log.v(TAG, "handleWindowStateChanged: assume hongbao has been opened");
-                    }
+                    // TODO: 2018/1/25 点对点聊天（跟某个好友聊天）的时候，抢自己发的红包会陷入无限循环中
+                    Log.i(TAG, "handleWindowStateChanged: parent performClick");
+                    parent.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                    setLuckyMoneyAutoOpened(true);
                     parent.recycle();
                 }
                 hongbaoNode.recycle();
@@ -112,7 +135,7 @@ public class LuckyMoneyService extends AccessibilityService {
             } else {
                 // 未找到开红包的按钮，可能是红包已经抢完了，也有可能是红包过期了
                 if (luckyMoneyAutoOpened) {   // 如果是自动打开的情况就自动关闭，否则就不用关闭了
-                    // 如果找到了一个带有“手慢了”、“已超过24小时”或者“红包已领取”的节点，说明红包已经没了
+                    // 如果找到了一个带有“手慢了”、“已超过24小时”的节点，说明红包已经没了
                     if (hasOneOfOverNodes(rootNode)) {
                         Log.i(TAG, "handleWindowStateChanged: LuckyMoneyReceiveUI performGlobalActionBack");
                         performGlobalAction(GLOBAL_ACTION_BACK);
@@ -140,17 +163,14 @@ public class LuckyMoneyService extends AccessibilityService {
                 return;
             }
             traverseMutex = true;
-            AccessibilityNodeInfo hongbaoNode = findHongbaoNode(rootNode);
+            AccessibilityNodeInfo hongbaoNode = findKeywordNode(rootNode);
             if (hongbaoNode != null) {
-                AccessibilityNodeInfo parent = findHongbaoParentNode(hongbaoNode);
+                AccessibilityNodeInfo parent = findClickableParentNode(hongbaoNode);
                 if (parent != null) {
-                    if (getLuckyMoneyUID(parent)) {
-                        Log.i(TAG, "handleWindowContentChanged: parent performClick");
-                        parent.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                        setLuckyMoneyAutoOpened(true);
-                    } else {
-                        Log.w(TAG, "handleWindowContentChanged: assume hongbao has been opened");
-                    }
+                    // TODO: 2018/1/25 点对点聊天（跟某个好友聊天）的时候，抢自己发的红包会陷入无限循环中
+                    Log.i(TAG, "handleWindowContentChanged: parent performClick");
+                    parent.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                    setLuckyMoneyAutoOpened(true);
                     parent.recycle();
                 }
                 hongbaoNode.recycle();
@@ -174,54 +194,53 @@ public class LuckyMoneyService extends AccessibilityService {
         return false;
     }
 
-    private boolean getLuckyMoneyUID(@NonNull AccessibilityNodeInfo node) {
+    /**
+     * 微信6.6.1发红包布局：
+     * <pre class="prettyprint">
+     *   RelativeLayout  ---1，顶层的布局
+     *     TextView ---2，时间（可能没有）
+     *     LinearLayout  ---3，红包和微信用户头像布局
+     *       LinearLayout  ---4，红包布局（可点击，点击此布局打开红包）
+     *         LinearLayout  ---5，红包的上半部分布局（包括红包图标，红包的描述，红包的状态）
+     *           ImageView ---6，红包图标
+     *           RelativeLayout ---7，红包的上半部分子布局的嵌套布局
+     *             LinearLayout  ---8，红包的上半部分子布局（包括红包的描述，红包的状态）
+     *               TextView  ---9，红包的描述
+     *               TextView  ---10，红包的状态，例如“红包已领取”，“红包已被领完”，“领取红包”，“查看红包”（自己发红包的时候显示查看红包）
+     *         RelativeLayout  ---11，红包的下半部分布局（只有一个“微信红包”字样的说明）
+     *           TextView  ---12，“微信红包”字样的说明
+     *       RelativeLayout  ---13，微信用户头像布局
+     *         ImageView  ---14，微信用户头像布局的嵌套布局
+     *         View  ---15，占空间的布局
+     *         ImageView  ---16，真实的微信用户头像布局（content-desc为昵称+头像）
+     *   RelativeLayout
+     * </pre>
+     * 微信6.6.1收到红包布局：
+     * <pre class="prettyprint">
+     *   RelativeLayout  ---1，顶层的布局
+     *     TextView ---2，时间（可能没有）
+     *     LinearLayout  ---3，红包和微信用户头像布局
+     *       RelativeLayout  ---4，微信用户头像布局
+     *         ImageView  ---5，微信用户头像布局的嵌套布局
+     *         View  ---6，占空间的布局
+     *         ImageView  ---7，真实的微信用户头像布局（content-desc为昵称+头像）
+     *       LinearLayout  ---8，红包布局的外嵌套布局（比发红包多的一层布局）
+     *         LinearLayout  ---9，红包布局（可点击，点击此布局打开红包）
+     *           LinearLayout  ---10，红包的上半部分布局（包括红包图标，红包的描述，红包的状态）
+     *             ImageView ---11，红包图标
+     *             RelativeLayout ---12，红包的上半部分子布局的嵌套布局
+     *               LinearLayout  ---13，红包的上半部分子布局（包括红包的描述，红包的状态）
+     *                 TextView  ---14，红包的描述
+     *                 TextView  ---15，红包的状态，例如“红包已领取”，“红包已被领完”，“领取红包”，“查看红包”（自己发红包的时候显示查看红包）
+     *           RelativeLayout  ---16，红包的下半部分布局（只有一个“微信红包”字样的说明）
+     *             TextView  ---17，“微信红包”字样的说明
+     *   RelativeLayout
+     * </pre>
+     * <p>此函数的功能即找到发红包布局中的4布局或者收红包中的9布局</p>
+     */
+    private AccessibilityNodeInfo findClickableParentNode(@NonNull AccessibilityNodeInfo node) {
         try {
-            Log.i(TAG, "getLuckyMoneyUID: enter");
-            AccessibilityNodeInfo parentNode = node.getParent();
-            traverseNode(parentNode);
-            boolean hasPickedTextView = false;
-            boolean hasPickedImageView = false;
-            int childCount = parentNode.getChildCount();
-            Log.i(TAG, "getLuckyMoneyUID: childCount = " + childCount);
-            /*
-             * 当点对点发红包或者自己在群聊里发红包时，会有2个child，一个ImageView(头像布局)和一个LinearLayout(红包布局)
-             * 当群聊发红包时，会有3个或者4个child，一个ImageView(头像布局)、一个LinearLayout(红包布局)、一个TextView(昵称)、一个TextView(时间)
-             * 当群聊里发红包有3个child时，也有可能时自己发红包时突然多出一个TextView(时间)
-             */
-            if (childCount == 2) {
-                luckyMoneyUID.setTimeOrNameNone();
-            }
-            for (int i = 0; i < childCount; i++) {
-                CharSequence className = parentNode.getChild(i).getClassName();
-                if ("android.widget.TextView".equals(className)) {
-                    CharSequence timeOrName = parentNode.getChild(i).getText();
-                    if (!TextUtils.isEmpty(timeOrName) && !hasPickedTextView) {
-                        luckyMoneyUID.setTimeOrName(timeOrName.toString());
-                        hasPickedTextView = true;
-                    }
-                }
-                if ("android.widget.ImageView".equals(className)) {
-                    CharSequence sender = parentNode.getChild(i).getContentDescription();
-                    if (!TextUtils.isEmpty(sender) && !hasPickedImageView) {
-                        // 用头像的内容描述作为发送者，一般的格式为“人名+头像”
-                        // 为了避免额外的开销，此处就不再做修改了
-                        luckyMoneyUID.setSender(sender.toString());
-                        hasPickedImageView = true;
-                    }
-                }
-            }
-            return luckyMoneyUID.isSenderChanged() || luckyMoneyUID.isContentDescChanged() ||
-                    luckyMoneyUID.isTimeOrNameChanged();
-        } catch (Exception e) {
-            return false;
-        } finally {
-            Log.i(TAG, "getLuckyMoneyUID: " + luckyMoneyUID.toString());
-        }
-    }
-
-    private AccessibilityNodeInfo findHongbaoParentNode(@NonNull AccessibilityNodeInfo node) {
-        try {
-            Log.i(TAG, "findHongbaoParentNode: enter");
+            Log.i(TAG, "findClickableParentNode: enter");
             traverseNode(node);
             AccessibilityNodeInfo parentNode = node.getParent();
             if (parentNode == null) {
@@ -229,18 +248,10 @@ public class LuckyMoneyService extends AccessibilityService {
             }
             CharSequence className = parentNode.getClassName();
             if (!"android.widget.LinearLayout".equals(className)) {
-                return null;        // 红包的一级父布局为线性布局
+                return null;        // 上级父布局为线性布局
             }
 
-            /*
-             * 此处应该有3个child，第一个是红包描述，第二个是“领取红包”或者“查看红包”，第三个为“微信红包”
-             */
-            String contentDesc = parentNode.getChild(0).getText().toString();
-            luckyMoneyUID.setContentDesc(contentDesc);
-
-            /*
-             * 如果是普通的文本消息，是找不到一个可点击的父节点的
-             */
+            // 如果是普通的文本消息，是找不到一个可点击的父节点的
             while (parentNode != null) {
                 traverseNode(parentNode);
                 if (parentNode.isClickable()) {
@@ -279,11 +290,16 @@ public class LuckyMoneyService extends AccessibilityService {
         }
     }
 
+    /**
+     * 微信6.6.1版本针对红包当前的状态新增了一个TextView来标识，红包的状态都会通过该TextView的text来标识
+     */
     @Nullable
-    private AccessibilityNodeInfo findHongbaoNode(@NonNull AccessibilityNodeInfo node) {
+    private AccessibilityNodeInfo findKeywordNode(@NonNull AccessibilityNodeInfo node) {
         AccessibilityNodeInfo hongbaoNode;
-        for (String text : HONGBAO_KEYWORD) {
-            hongbaoNode = findLatestHongbaoNode(node, text);
+        String[] keywords = mPreferences.getBoolean(PREF_CHECK_SELF, false)
+                ? HONGBAO_KEYWORD : HONGBAO_KEYWORD2;
+        for (String text : keywords) {
+            hongbaoNode = findLatestKeywordNode(node, text);
             if (hongbaoNode != null) {
                 return hongbaoNode;
             }
@@ -291,24 +307,25 @@ public class LuckyMoneyService extends AccessibilityService {
         return null;
     }
 
+
     @Nullable
-    private AccessibilityNodeInfo findLatestHongbaoNode(@NonNull AccessibilityNodeInfo node, String text) {
+    private AccessibilityNodeInfo findLatestKeywordNode(@NonNull AccessibilityNodeInfo node, String text) {
         List<AccessibilityNodeInfo> list = node.findAccessibilityNodeInfosByText(text);
         if (list != null && !list.isEmpty()) {
             final int size = list.size();
             if (size == 1) {
-                return checkHongbaoNode(list.get(0));
+                return checkKeywordNode(list.get(0));
             } else if (size > 1) {
                 for (int i = 0; i < size - 1; i++) {
                     list.get(i).recycle();      // 回收不需要使用的节点
                 }
-                return checkHongbaoNode(list.get(size - 1));
+                return checkKeywordNode(list.get(size - 1));
             }
         }
         return null;
     }
 
-    private AccessibilityNodeInfo checkHongbaoNode(@Nullable AccessibilityNodeInfo node) {
+    private AccessibilityNodeInfo checkKeywordNode(@Nullable AccessibilityNodeInfo node) {
         if (node == null) {
             return null;
         }

@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">微信红包</string>
-    <string name="enable_lucky_money">打开自动抢红包</string>
+    <string name="enable_lucky_money">打开自动抢红包功能</string>
     <string name="description">开启后，将自动为你抢微信红包，请保持程序一直后台运行。</string>
+    <string name="check_self_hb">检查自己发出的红包</string>
 </resources>
